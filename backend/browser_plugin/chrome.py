@@ -419,7 +419,13 @@ class ChromeSession:
 
     def navigate(self, url: str, timeout: float = 60.0) -> dict:
         cdp = self.ensure()
-        result = cdp.call("Page.navigate", {"url": url}, timeout=timeout) or {}
+        try:
+            result = cdp.call("Page.navigate", {"url": url}, timeout=timeout) or {}
+        except CDPError as exc:
+            if "таймаут" not in str(exc):
+                raise
+            raise CDPError(f"сайт не ответил за {int(timeout)} с — сервер Пульса не достаёт до него (блокировка по "
+                           "стране?): задайте сессии прокси") from None
         if result.get("errorText"):
             error = result["errorText"]
             hint = (" — сервер Пульса не достаёт до сайта (блокировка по стране?): задайте сессии прокси"

@@ -70,7 +70,9 @@ SNAPSHOT_JS = r"""
     const type = (el.getAttribute('type') || '').toLowerCase();
     const label = clean(el.getAttribute('aria-label') || el.innerText
       || (el.labels && el.labels[0] && el.labels[0].innerText) || el.getAttribute('placeholder')
-      || el.getAttribute('title') || el.getAttribute('alt') || (type !== 'password' ? el.value : ''));
+      || el.getAttribute('title') || el.getAttribute('alt') || (type !== 'password' ? el.value : '')
+      || (el.querySelector('img[alt]') && el.querySelector('img[alt]').getAttribute('alt'))
+      || el.getAttribute('name') || el.id);
     const item = {ref, tag, label};
     if (el.getAttribute('role')) item.role = el.getAttribute('role');
     if (type) item.type = type;
