@@ -56,3 +56,5 @@
 .tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-x { border: 0; background: transparent; cursor: pointer; font-size: 1rem; line-height: 1; color: inherit; }
 .view-wrap:focus { outline: 2px solid var(--pulse-primary); outline-offset: 1px; }
+.pending-item { flex-direction: column; align-items: stretch; }
+.pending-shot { width: 100%; border: 1px solid var(--pulse-divider); border-radius: 6px; }

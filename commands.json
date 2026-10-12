@@ -111,27 +111,59 @@
   },
   {
     "name": "snapshot",
-    "description": "Accessibility/DOM snapshot + screenshot в @browser/<session>/",
+    "description": "Что на странице: видимые кнопки, ссылки и поля со ссылками e1, e2… (их принимают click/type/select/download) и текст страницы; скриншот — в @browser/<session>/",
     "timeout_sec": 120,
     "args": [
       {
         "name": "session",
-        "required": true,
-        "description": "имя сессии"
+        "description": "сессия",
+        "required": true
       },
       {
         "name": "format",
-        "description": "a11y (по умолчанию) | html | both"
+        "description": "page (по умолчанию: элементы и текст) | a11y | html | both"
+      },
+      {
+        "name": "max_elements",
+        "description": "сколько элементов вернуть (по умолчанию 150)"
+      },
+      {
+        "name": "max_text",
+        "description": "сколько символов текста (по умолчанию 8000; целиком — в @browser/<session>/last_text.md)"
       },
       {
         "name": "tab",
-        "description": "вкладка: номер или id из tabs (по умолчанию — активная); станет активной"
+        "description": "вкладка (номер или id из tabs)"
+      }
+    ]
+  },
+  {
+    "name": "download",
+    "description": "Скачать файл по ссылке (документ из базы, выписка, PDF) с куками и прокси сессии → @browser/<session>/downloads/",
+    "timeout_sec": 180,
+    "args": [
+      {
+        "name": "session",
+        "description": "сессия",
+        "required": true
+      },
+      {
+        "name": "ref",
+        "description": "ссылка из snapshot (e12) — элемент с href"
+      },
+      {
+        "name": "url",
+        "description": "или прямой адрес файла"
+      },
+      {
+        "name": "name",
+        "description": "имя файла (по умолчанию — из ответа сайта)"
       }
     ]
   },
   {
     "name": "click",
-    "description": "Клик по CSS-селектору или ref из snapshot (нужен mode=write)",
+    "description": "Клик по элементу из snapshot (--ref e12) настоящими событиями мыши; нужен режим write; на странице оплаты — только с подтверждением владельца",
     "timeout_sec": 60,
     "args": [
       {
@@ -141,15 +173,15 @@
       },
       {
         "name": "selector",
-        "description": "CSS-селектор"
+        "description": "CSS-селектор — только если элемента нет в snapshot"
       },
       {
         "name": "ref",
-        "description": "ref из snapshot (альтернатива selector)"
+        "description": "ссылка на элемент из последнего snapshot: e12"
       },
       {
         "name": "confirm",
-        "description": "id подтверждения владельца, если страница опасная"
+        "description": "id одобренного владельцем запроса (pulse browser pending --id …) — для оплаты и оформления заказа"
       },
       {
         "name": "tab",
@@ -183,7 +215,7 @@
   },
   {
     "name": "type",
-    "description": "Ввод текста в элемент (нужен mode=write)",
+    "description": "Ввести текст в поле из snapshot (заменяет содержимое; --submit true — затем Enter); нужен режим write",
     "timeout_sec": 60,
     "args": [
       {
@@ -198,11 +230,11 @@
       },
       {
         "name": "selector",
-        "description": "CSS-селектор"
+        "description": "CSS-селектор — только если элемента нет в snapshot"
       },
       {
         "name": "ref",
-        "description": "ref из snapshot"
+        "description": "ссылка на элемент из последнего snapshot: e12"
       },
       {
         "name": "submit",
@@ -210,7 +242,7 @@
       },
       {
         "name": "confirm",
-        "description": "id подтверждения владельца"
+        "description": "id одобренного владельцем запроса (pulse browser pending --id …) — для оплаты и оформления заказа"
       },
       {
         "name": "tab",
@@ -303,11 +335,11 @@
       },
       {
         "name": "selector",
-        "description": "CSS-селектор select"
+        "description": "CSS-селектор — только если элемента нет в snapshot"
       },
       {
         "name": "ref",
-        "description": "ref из snapshot"
+        "description": "ссылка на элемент из последнего snapshot: e12"
       },
       {
         "name": "value",
@@ -316,7 +348,7 @@
       },
       {
         "name": "confirm",
-        "description": "id подтверждения владельца"
+        "description": "id одобренного владельцем запроса (pulse browser pending --id …) — для оплаты и оформления заказа"
       },
       {
         "name": "tab",
@@ -502,28 +534,16 @@
     ]
   },
   {
-    "name": "confirm",
-    "description": "Подтвердить опасное действие (checkout/Pay) — только после явного «да» владельца",
+    "name": "pending",
+    "description": "Запросы подтверждения владельца: все ожидающие или один по --id — status pending | approved | rejected | used",
     "args": [
-      {
-        "name": "session",
-        "required": true,
-        "description": "имя сессии"
-      },
       {
         "name": "id",
-        "required": true,
-        "description": "id из ответа click/type (pending confirm)"
-      }
-    ]
-  },
-  {
-    "name": "pending",
-    "description": "Ожидающие подтверждения владельца",
-    "args": [
+        "description": "id запроса из ответа click/type (c…)"
+      },
       {
         "name": "session",
-        "description": "фильтр по сессии"
+        "description": "только этой сессии"
       }
     ]
   },

@@ -46,11 +46,15 @@ class ChromeSession:
         *,
         proxy: str | None = None,
         headless: bool = True,
+        timezone: str | None = None,
     ):
         self.name = name
         self.profile_dir = Path(profile_dir)
         self.proxy = proxy
         self.headless = headless
+        self.timezone = timezone
+        self.user_agent: str | None = None
+        self.last_used = time.monotonic()
         self.port: int | None = None
         self.proc: subprocess.Popen | None = None
         self.cdp: CDP | None = None
@@ -86,6 +90,9 @@ class ChromeSession:
             "--no-sandbox",
             "--disable-gpu",
             "--window-size=1280,800",
+            # обычный Chrome, а не «робот»: без флага автоматизации, русский язык интерфейса и сайтов
+            "--disable-blink-features=AutomationControlled",
+            "--lang=ru-RU",
             "about:blank",
         ]
         if self.headless:
@@ -103,7 +110,9 @@ class ChromeSession:
             start_new_session=True,
         )
         try:
-            wait_debugger(self.port, timeout=45)
+            version = wait_debugger(self.port, timeout=45)
+            # headless-Chrome подписывается «HeadlessChrome» — многие сайты по этому слову сразу показывают капчу
+            self.user_agent = str(version.get("User-Agent") or "").replace("HeadlessChrome", "Chrome") or None
             self._attach(None)
         except Exception:
             self.stop()
@@ -154,6 +163,14 @@ class ChromeSession:
         cdp.call("DOM.enable")
         cdp.call("Runtime.enable")
         cdp.call("Network.enable")
+        if self.user_agent:
+            cdp.call("Network.setUserAgentOverride", {"userAgent": self.user_agent,
+                                                      "acceptLanguage": "ru-RU,ru;q=0.9,en;q=0.8"})
+        if self.timezone:
+            try:
+                cdp.call("Emulation.setTimezoneOverride", {"timezoneId": self.timezone})
+            except CDPError:
+                pass
         for method, params in (
             ("Accessibility.enable", None),
             ("Emulation.setFocusEmulationEnabled", {"enabled": True}),
@@ -376,7 +393,23 @@ class ChromeSession:
             except OSError:
                 pass
 
+    def touch(self) -> None:
+        self.last_used = time.monotonic()
+
+    def healthy(self) -> bool:
+        """Отвечает ли вкладка: после таймаута сайта рендерер бывает «повисшим» — тогда Chrome перезапускают."""
+        if not self.running:
+            return False
+        if not self.cdp or not self.cdp.alive:
+            return True                                   # переподключится в ensure()
+        try:
+            self.cdp.call("Runtime.evaluate", {"expression": "1", "returnByValue": True}, timeout=5)
+            return True
+        except CDPError:
+            return False
+
     def ensure(self) -> CDP:
+        self.last_used = time.monotonic()
         if not self.running:
             self.start()
         elif not self.cdp or not self.cdp.alive:
@@ -386,7 +419,13 @@ class ChromeSession:
 
     def navigate(self, url: str, timeout: float = 60.0) -> dict:
         cdp = self.ensure()
-        cdp.call("Page.navigate", {"url": url}, timeout=timeout)
+        result = cdp.call("Page.navigate", {"url": url}, timeout=timeout) or {}
+        if result.get("errorText"):
+            error = result["errorText"]
+            hint = (" — сервер Пульса не достаёт до сайта (блокировка по стране?): задайте сессии прокси"
+                    if any(e in error for e in ("TIMED_OUT", "CONNECTION", "NAME_NOT_RESOLVED", "TUNNEL", "PROXY"))
+                    else "")
+            raise CDPError(f"сайт не открылся: {error}{hint}")
         # Wait for load event roughly
         deadline = time.monotonic() + min(timeout, 45)
         last = {"url": url, "title": ""}

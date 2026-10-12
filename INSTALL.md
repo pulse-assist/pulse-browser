@@ -6,14 +6,12 @@
 
 ```bash
 pulse plugins list            # у browser — status: running
-pulse browser --help          # команды sessions, open, snapshot…
-pulse browser check           # Chromium, CDP, каталоги профилей
+pulse browser check           # Chromium, CDP, профили, прокси сессий
 ```
 
-Если status: error — `pulse plugins logs browser --lines 80`, расскажи владельцу, что в журнале.
-Плагину нужен Docker (runtime.kind = docker): образ с Chromium собирается при установке (первый раз дольше).
-
-Права при установке: `files:provide` (@browser), `signals:create` (confirm на оплату), `notify`, `network`.
+Нужен Docker: образ с Chromium собирается при установке (первый раз — несколько минут). Status error —
+`pulse plugins logs browser --lines 80`, расскажи владельцу, что в журнале, и остановись.
+Нужен Пульс с контрактом плагинов 1.7 (подтверждения только от владельца).
 
 ## 2. Закрепи страницу
 
@@ -21,57 +19,39 @@ pulse browser check           # Chromium, CDP, каталоги профилей
 pulse plugins pin browser main
 ```
 
-Страница: [Браузер](/p/browser/main).
+## 3. Сессии — под сайты владельца
 
-## 3. Создай сессию и войди сам
-
-Владелец логинится **сам** на странице плагина (клики по скриншоту + ввод текста). Пароли и 2FA
-в чат агенту не передавать.
+Спроси владельца, где агенту работать (магазины, кабинеты, базы документов). На каждый сайт или группу — сессия:
 
 ```bash
-pulse browser session create --name demo --mode read-only
-pulse browser open --session demo --url https://example.com
-pulse browser snapshot --session demo
+pulse browser session create --name ozon --allowlist "ozon.ru, *.ozon.ru"
 ```
 
-Скриншоты и дампы — в [@browser](/files?path=@browser).
+Российским сайтам с зарубежного сервера нужен российский прокси: `pulse browser open --session ozon --url
+https://www.ozon.ru` отвечает «сайт не открылся: net::ERR_…» — спроси владельца о прокси (описание может лежать в
+его карточках: `pulse cards list --q прокси`). Адрес прокси — секрет: задаёт владелец в форме сессии на странице
+плагина, или ты — `pulse browser session update --name ozon --proxy "<адрес>"`, не повторяя его в ответе.
 
-Вкладки и ожидания (0.2):
+## 4. Вход и режим — делает владелец сам
+
+Отправь владельца на [Браузер](/p/browser/main): выбрать сессию → «Открыть» сайт → войти в живом просмотре (пароль
+и коды вводит он, не в чат). Если агенту нужно кликать и оформлять — режим сессии «агент может действовать» (тоже
+владелец, на той же странице). Оплату агент всё равно делает только после «Разрешить один раз».
+
+## 5. Проверь и расскажи владельцу
 
 ```bash
-pulse browser tabs --session demo
-pulse browser tab new --session demo --url https://example.com --wait_selector body
-pulse browser wait --session demo --text "Example" --networkidle true
+pulse browser sessions
+pulse browser open --session ozon --url https://www.ozon.ru --wait_idle true
+pulse browser snapshot --session ozon --max_elements 20
 ```
 
-Живой просмотр — на странице [Браузер](/p/browser/main): выберите сессию, нажмите «Открыть».
+Что установлен «Браузер» (версия), какие сессии заведены, где вошёл владелец, какой у них режим. Как работает
+подтверждение оплаты: агент присылает запрос со скриншотом, решение — на странице «Браузер». Скриншоты шагов —
+[@browser](/files?path=@browser).
 
-Прокси на профиль (РФ / EU и т.п.):
+## Обновление и перенос
 
-```bash
-pulse browser session create --name ru-services --proxy "http://user:pass@host:port"
-pulse browser session update --name eu --proxy ""
-```
-
-Режим записи для агента (клики) — только когда нужно:
-
-```bash
-pulse browser session update --name demo --mode write
-```
-
-Оплата / checkout — агент получит `confirm_id`; после явного «да» владельца:
-
-```bash
-pulse browser confirm --session demo --id <confirm_id>
-```
-
-## 3а. Обновление
-
-`pulse plugins update browser` (из каталога/папки). Если update падает на `Singleton*` в профилях —
-закрой Chrome (`pulse browser close`) и удали висячие симлинки `data/profiles/*/Singleton*`.
-
-## 4. Что сказать владельцу
-
-- Плагин «Браузер» установлен; меню «Плагины ▾» → Браузер.
-- Агенты: `pulse browser …`; артефакты в `@browser/<session>/`.
-- Вход в сайты — только на странице плагина, не через чат.
+`pulse plugins update browser`. Плагин, поставленный из папки (0.2), переводится на каталог так: `pulse plugins remove
+browser` (без `--purge`: профили, вход в сайты и сессии остаются) → `pulse plugins install browser` → `pulse plugins
+pin browser main`.

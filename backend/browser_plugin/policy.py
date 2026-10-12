@@ -59,28 +59,12 @@ def require_url_allowed(url: str, session: dict) -> None:
         )
 
 
-def check_mutation(
-    session: dict,
-    url: str,
-    *,
-    confirm_id: str | None,
-    patterns: list[str],
-    approved: set[str],
-) -> str | None:
-    """Return None if ok; raise PolicyError; or return needed confirm id token request.
-
-    If dangerous and confirm_id missing/not approved — caller should create pending.
-    Returns 'need_confirm' sentinel via raising a special case — we use return of
-    'needs_confirm' string only when caller should create pending. Simpler: raise
-    NeedConfirm from sessions layer.
-    """
+def check_mutation(session: dict, url: str, *, patterns: list[str]) -> bool:
+    """Можно ли агенту действовать: режим write и allowlist (иначе PolicyError). True — страница опасная
+    (оплата, оформление заказа): действие только с подтверждением владельца."""
     require_write(session)
     require_url_allowed(url, session)
-    if is_dangerous(url, patterns):
-        if confirm_id and confirm_id in approved:
-            return None
-        return "needs_confirm"
-    return None
+    return is_dangerous(url, patterns)
 
 
 class NeedConfirm(Exception):

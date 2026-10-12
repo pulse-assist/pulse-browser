@@ -1,8 +1,10 @@
-"""Плагин «Браузер»: Chromium + CDP для агентов и страница входа/просмотра в UI Пульса.
+"""Плагин «Браузер»: Chromium + CDP для агентов — веб-задачи, которые не решить запросом к серверу (поиск и покупка в
+магазине, документы из открытой базы без API, сервисы со входом владельца) — и страница входа и живого просмотра.
 
-Страница: GET /state, /sessions/{name}/view|frame|tabs, POST /sessions, PATCH/DELETE /sessions/{name},
-POST /sessions/{name}/open|close|action|input|tabs/new|tabs/select|tabs/close, POST /confirm/{id}.
-Агенты: pulse browser sessions|session create|open|snapshot|click|type|tabs|tab new|wait|…
+Страница: GET /state, /sessions/{name}/view|frame|tabs, /pending/{id}/screenshot, POST /sessions, PATCH/DELETE
+/sessions/{name}, POST /sessions/{name}/open|close|input|tabs/new|tabs/select|tabs/close, POST /confirm/{id}
+(только владелец — X-Pulse-Caller: owner).
+Агенты: pulse browser sessions|session create|open|snapshot|click|type|press|select|download|tabs|tab …|wait|pending|…
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ from pulse_plugin import CommandError, Plugin
 from .cdp import CDPError
 from .files_provider import ArtifactsFS
 from .policy import NeedConfirm, PolicyError
-from .sessions import BrowserService, SessionBusy
+from .sessions import BrowserService, NotRunning, SessionBusy
 from .store import Store
 
 plugin = Plugin()
@@ -36,24 +38,38 @@ def _run(fn, *args, **kwargs):
     try:
         return fn(*args, **kwargs)
     except KeyError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise HTTPException(404, str(exc).strip("'\"")) from exc
+    except NotRunning as exc:
+        raise HTTPException(409, str(exc)) from exc
     except (ValueError, PolicyError, CDPError, SessionBusy) as exc:
         raise HTTPException(400, str(exc)) from exc
     except NeedConfirm as exc:
-        raise HTTPException(409, {"detail": str(exc), **exc.pending_payload}) from exc
+        raise HTTPException(409, str(exc)) from exc
 
 
 def _cmd(fn, *args, **kwargs):
     try:
         return fn(*args, **kwargs)
     except KeyError as exc:
-        raise CommandError(str(exc)) from exc
-    except (ValueError, PolicyError, CDPError, SessionBusy) as exc:
+        raise CommandError(str(exc).strip("'\"")) from exc
+    except (ValueError, PolicyError, CDPError, SessionBusy, NotRunning) as exc:
         raise CommandError(str(exc)) from exc
     except NeedConfirm as exc:
-        raise CommandError(
-            f"{exc}; confirm_id={exc.pending_payload.get('confirm_id')}"
-        ) from exc
+        raise CommandError(str(exc)) from exc
+
+
+def _owner_for_write(mode) -> None:
+    """Режим write (агент кликает и печатает) включает владелец сам — не агент себе."""
+    if str(mode or "").strip().lower() == "write" and plugin.caller() != "owner":
+        raise CommandError("режим write включает владелец: страница [Браузер](/p/browser/main) → режим сессии "
+                           "«агент может действовать». Попроси его об этом")
+
+
+def _int(value) -> int | None:
+    try:
+        return int(value) if value not in (None, "", True) else None
+    except (TypeError, ValueError):
+        raise CommandError(f"ожидалось число, а не «{value}»") from None
 
 
 def _flag(value) -> bool:
@@ -96,12 +112,15 @@ def state() -> dict:
             "default_mode": plugin.settings.get("default_mode") or "read-only",
             "headless": bool(plugin.settings.get("headless", True)),
             "confirm_patterns": plugin.settings.get("confirm_patterns") or "",
+            "idle_minutes": browser._int_setting("idle_minutes", 15),  # noqa: SLF001
         },
     }
 
 
 @app.post("/sessions")
 def create_session(body: dict = Body(...)) -> dict:
+    if str(body.get("mode") or "").lower() == "write":
+        plugin.require_owner("Режим write")
     return _run(
         browser.create_session,
         body.get("name") or "",
@@ -114,6 +133,8 @@ def create_session(body: dict = Body(...)) -> dict:
 @app.patch("/sessions/{name}")
 def patch_session(name: str, body: dict = Body(...)) -> dict:
     fields = {k: body[k] for k in ("mode", "proxy", "allowlist") if k in body}
+    if str(fields.get("mode") or "").lower() == "write":
+        plugin.require_owner("Режим write")
     return _run(browser.update_session, name, **fields)
 
 
@@ -137,7 +158,7 @@ def close_session(name: str) -> dict:
 
 @app.get("/sessions/{name}/view")
 def view_session(name: str) -> dict:
-    return _run(browser.view, name)
+    return _run(browser.view, name, start=False)
 
 
 @app.get("/sessions/{name}/frame")
@@ -169,21 +190,20 @@ def tab_close_session(name: str, body: dict = Body(default={})) -> dict:
 @app.post("/sessions/{name}/input")
 def session_input(name: str, body: dict = Body(...)) -> dict:
     """Live view: быстрый ввод владельца (клик, колесо, клавиша, вставка текста)."""
-    return _run(browser.ui_input, name, body.get("kind") or "", body, fast=True)
-
-
-@app.post("/sessions/{name}/action")
-def session_action(name: str, body: dict = Body(...)) -> dict:
-    kind = body.get("kind") or ""
-    return _run(browser.ui_input, name, kind, body)
+    plugin.require_owner("Ввод в живом просмотре")
+    return _run(browser.ui_input, name, body.get("kind") or "", body)
 
 
 @app.post("/confirm/{confirm_id}")
 def confirm_page(confirm_id: str, body: dict = Body(default={})) -> dict:
-    session = (body or {}).get("session") or ""
-    if not session:
-        raise HTTPException(400, "нужен session")
-    return _run(browser.confirm, session, confirm_id)
+    """Решение по запросу агента (оплата, оформление заказа): только владелец, не агент сам себе."""
+    plugin.require_owner("Оплату и оформление заказа")
+    return _run(browser.decide, confirm_id, bool((body or {}).get("approve", True)))
+
+
+@app.get("/pending/{confirm_id}/screenshot")
+def pending_screenshot(confirm_id: str) -> dict:
+    return _run(browser.pending_screenshot, confirm_id)
 
 
 # --- agent commands ------------------------------------------------------------
@@ -197,6 +217,7 @@ def cmd_sessions(args: dict) -> dict:
 def cmd_session_create(args: dict) -> dict:
     if not args.get("name"):
         raise CommandError("нужен --name")
+    _owner_for_write(args.get("mode"))
     return _cmd(
         browser.create_session,
         args["name"],
@@ -214,6 +235,7 @@ def cmd_session_update(args: dict) -> dict:
     for key in ("mode", "proxy", "allowlist"):
         if key in args and args[key] is not None:
             fields[key] = args[key]
+    _owner_for_write(fields.get("mode"))
     return _cmd(browser.update_session, args["name"], **fields)
 
 
@@ -234,11 +256,20 @@ def cmd_open(args: dict) -> dict:
     )
 
 
-@plugin.command("snapshot", "Snapshot + screenshot в @browser/<session>/")
+@plugin.command("snapshot", "Что на странице: элементы со ссылками e1, e2… и текст страницы")
 def cmd_snapshot(args: dict) -> dict:
     if not args.get("session"):
         raise CommandError("нужен --session")
-    return _cmd(browser.snapshot, args["session"], args.get("format") or "a11y", tab=args.get("tab"))
+    return _cmd(browser.snapshot, args["session"], args.get("format") or "page", tab=args.get("tab"),
+                max_elements=_int(args.get("max_elements")), max_text=_int(args.get("max_text")))
+
+
+@plugin.command("download", "Скачать файл по ссылке с куками и прокси сессии")
+def cmd_download(args: dict) -> dict:
+    if not args.get("session") or not (args.get("url") or args.get("ref") or args.get("selector")):
+        raise CommandError("нужны --session и --url или --ref ссылки из snapshot")
+    return _cmd(browser.download, args["session"], url=args.get("url"), ref=args.get("ref"),
+                selector=args.get("selector"), filename=args.get("name"))
 
 
 @plugin.command("click", "Клик по селектору/ref")
@@ -361,15 +392,10 @@ def cmd_view(args: dict) -> dict:
     return data
 
 
-@plugin.command("confirm", "Подтвердить опасное действие")
-def cmd_confirm(args: dict) -> dict:
-    if not args.get("session") or not args.get("id"):
-        raise CommandError("нужны --session и --id")
-    return _cmd(browser.confirm, args["session"], args["id"])
-
-
-@plugin.command("pending", "Ожидающие подтверждения")
+@plugin.command("pending", "Запросы подтверждения: все ожидающие или один по --id (pending, approved, rejected, used)")
 def cmd_pending(args: dict) -> dict:
+    if args.get("id"):
+        return _cmd(browser.pending, confirm_id=str(args["id"]))
     return {"pending": browser.pending(args.get("session"))}
 
 

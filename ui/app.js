@@ -1,4 +1,5 @@
-// Browser plugin page: sessions, owner login via screenshot overlay, pending confirms.
+// Страница «Браузер»: сессии (профили со входом владельца), живой просмотр с вводом и запросы подтверждения
+// от агентов (оплата, оформление заказа). Всё — через мост Пульса: pulse.plugin(...).
 const app = document.getElementById("app");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -15,6 +16,8 @@ let tabs = [];
 let lastFrame = null;   // последний кадр screencast {image_base64, mime, width, height, seq}
 let liveGen = 0;        // поколение live-цикла: смена сессии останавливает старый
 let inputChain = Promise.resolve();
+let shots = {};         // скриншоты запросов подтверждения: id → base64
+const MODE = { "read-only": "агент только смотрит", write: "агент может действовать" };
 
 async function load() {
   try {
@@ -35,11 +38,16 @@ async function load() {
 async function refreshView() {
   if (!selected) { view = null; return; }
   try {
-    view = await pulse.plugin(`/sessions/${encodeURIComponent(selected)}/view`);
+    view = await pulse.plugin(`/sessions/${encodeURIComponent(selected)}/view`);   // Chrome не запускает
+    if (!view.running) view = null;
   } catch (e) {
     view = null;
-    // session may be stopped — not fatal
     if (!String(e.message || "").includes("не найдена")) error = e.message;
+  }
+  for (const p of data?.pending || []) {
+    if (!shots[p.id]) {
+      try { shots[p.id] = (await pulse.plugin(`/pending/${q(p.id)}/screenshot`)).image_base64; } catch { /* нет */ }
+    }
   }
 }
 
@@ -57,6 +65,7 @@ function startPoll() {
       try {
         const f = await pulse.plugin(`/sessions/${q(name)}/frame`, { params: { since: seq, wait: 2 } });
         if (gen !== liveGen) return;
+        if (f.running === false) { liveGen++; await load(); return; }   // Chrome закрылся (простой)
         if (f.changed || !lastFrame) {
           seq = f.seq;
           lastFrame = f;
@@ -140,14 +149,14 @@ function render() {
       <section class="box">
         <div class="box-head">
           <h2>Сессии</h2>
-          <span class="hint">профиль = куки; прокси свой</span>
+          <span class="hint">профиль хранит вход в сайты</span>
           <span class="grow"></span>
           <button class="btn btn-primary" data-toggle-create>+ Сессия</button>
         </div>
         ${showCreate ? renderCreate() : ""}
         ${sessions.length
           ? sessions.map(renderSession).join("")
-          : `<div class="pl-empty">Сессий нет. Создайте профиль (например amazon) и войдите сами — пароль в чат агенту не передавайте.</div>`}
+          : `<div class="pl-empty">Сессий нет. Создайте профиль (например ozon) и войдите в сайт сами здесь — пароль в чат агенту не передавайте.</div>`}
         ${pending.length ? renderPending(pending) : ""}
         <div class="box-foot hint" style="margin-top:0.75rem">Артефакты:
           <button class="btn" data-go="/files?path=@browser">@browser</button>
@@ -156,9 +165,9 @@ function render() {
       <section class="box">
         <div class="box-head">
           <h2>${cur ? esc(cur.name) : "Просмотр"}</h2>
-          ${cur ? `<span class="pl-badge ${cur.mode === "write" ? "pl-important" : ""}">${esc(cur.mode)}</span>
+          ${cur ? `<span class="pl-badge ${cur.mode === "write" ? "pl-important" : ""}">${esc(MODE[cur.mode] || cur.mode)}</span>
             ${cur.proxy ? `<span class="hint">прокси ${esc(cur.proxy)}</span>` : `<span class="hint">без прокси</span>`}
-            ${cur.running ? `<span class="pl-badge pl-ok">running</span>` : `<span class="pl-badge">stopped</span>`}` : ""}
+            ${cur.running ? `<span class="pl-badge pl-ok">Chrome запущен</span>` : `<span class="pl-badge">Chrome остановлен</span>`}` : ""}
         </div>
         ${cur ? renderViewer(cur) : `<div class="pl-empty">Выберите сессию слева</div>`}
       </section>
@@ -169,10 +178,10 @@ function render() {
 function renderSession(s) {
   return `<div class="session ${s.name === selected ? "active" : ""}" data-select="${esc(s.name)}">
     <div class="session-name">${esc(s.name)}
-      ${s.running ? `<span class="pl-badge pl-ok">on</span>` : ""}
-      ${s.locked ? `<span class="pl-badge pl-important">lock</span>` : ""}
+      ${s.running ? `<span class="pl-badge pl-ok">запущен</span>` : ""}
+      ${s.locked ? `<span class="pl-badge pl-important">агент действует</span>` : ""}
     </div>
-    <div class="session-meta">${esc(s.url || "—")} · ${esc(s.mode)}${s.proxy ? ` · ${esc(s.proxy)}` : ""}</div>
+    <div class="session-meta">${esc(s.title || s.url || "—")} · ${esc(MODE[s.mode] || s.mode)}${s.proxy ? ` · прокси ${esc(s.proxy)}` : ""}</div>
   </div>`;
 }
 
@@ -181,12 +190,12 @@ function renderCreate() {
     <label>Имя <input name="name" required placeholder="amazon" pattern="[A-Za-z][A-Za-z0-9_-]{0,39}"></label>
     <label>Режим
       <select name="mode">
-        <option value="read-only">read-only (агент только смотрит)</option>
-        <option value="write">write (агент может кликать)</option>
+        <option value="read-only">агент только смотрит</option>
+        <option value="write">агент может действовать (оплата — с вашим подтверждением)</option>
       </select>
     </label>
-    <label>Прокси (необязательно) <input name="proxy" placeholder="http://user:pass@host:port"></label>
-    <label>Allowlist доменов <input name="allowlist" placeholder="amazon.com, *.amazon.com"></label>
+    <label>Прокси (для российских сайтов — российский) <input name="proxy" placeholder="http://логин:пароль@хост:порт"></label>
+    <label>Только эти сайты (необязательно) <input name="allowlist" placeholder="ozon.ru, *.ozon.ru"></label>
     <div class="toolbar">
       <button type="submit" class="btn btn-primary">Создать</button>
       <button type="button" class="btn" data-toggle-create>Отмена</button>
@@ -213,10 +222,10 @@ function renderViewer(cur) {
       <button class="btn" data-close ${cur.running ? "" : "disabled"}>Закрыть Chrome</button>
     </div>
     <div class="toolbar">
-      <label class="hint">Режим агента</label>
+      <label class="hint" for="mode-select">Агент</label>
       <select id="mode-select">
-        <option value="read-only" ${cur.mode === "read-only" ? "selected" : ""}>read-only</option>
-        <option value="write" ${cur.mode === "write" ? "selected" : ""}>write</option>
+        <option value="read-only" ${cur.mode === "read-only" ? "selected" : ""}>только смотрит</option>
+        <option value="write" ${cur.mode === "write" ? "selected" : ""}>может действовать</option>
       </select>
       <button class="btn" data-save-mode>Сохранить режим</button>
       ${confirmDelete
@@ -240,12 +249,20 @@ function renderViewer(cur) {
     <p class="hint">Живой просмотр: кликайте по кадру, крутите колесо, печатайте — после клика по кадру клавиатура идёт в Chrome. Пароли и 2FA вводите только здесь, не в чат агенту.</p>`;
 }
 
+const ACTION = { click: "нажать", type: "ввести текст в", press: "нажать клавишу", select: "выбрать в" };
+
 function renderPending(items) {
-  return `<div class="pending"><div class="box-head"><h2>Нужен confirm</h2></div>
+  return `<div class="pending"><div class="box-head"><h2>Агент ждёт вашего решения</h2></div>
     ${items.map((p) => `<div class="pending-item">
-      <span class="pl-badge pl-urgent">confirm</span>
-      <span class="pl-grow">${esc(p.session)} · ${esc(p.action)} · ${esc(p.detail?.url || "")}</span>
-      <button class="btn btn-primary" data-confirm="${esc(p.id)}" data-confirm-session="${esc(p.session)}">Разрешить</button>
+      <div><span class="pl-badge pl-urgent">оплата или заказ</span> сессия «${esc(p.session)}»</div>
+      <div>Агент хочет ${esc(ACTION[p.action] || p.action)} <b>«${esc(p.detail?.label || "—")}»</b>
+        на странице «${esc(p.detail?.title || "")}»</div>
+      <div class="hint">${esc(p.detail?.url || "")}</div>
+      ${shots[p.id] ? `<img class="pending-shot" src="data:image/png;base64,${shots[p.id]}" alt="Страница в момент запроса">` : ""}
+      <div class="toolbar">
+        <button class="btn btn-primary" data-confirm="${esc(p.id)}">Разрешить один раз</button>
+        <button class="btn" data-reject="${esc(p.id)}">Отклонить</button>
+      </div>
     </div>`).join("")}
   </div>`;
 }
@@ -344,15 +361,13 @@ function bind() {
   }
   const enterBtn = app.querySelector("[data-enter]");
   if (enterBtn) enterBtn.addEventListener("click", () => sendInput({ kind: "press", key: "Enter" }));
-  app.querySelectorAll("[data-confirm]").forEach((el) => {
+  app.querySelectorAll("[data-confirm], [data-reject]").forEach((el) => {
     el.addEventListener("click", () => {
-      const id = el.getAttribute("data-confirm");
-      const session = el.getAttribute("data-confirm-session");
+      const approve = el.hasAttribute("data-confirm");
+      const id = el.getAttribute(approve ? "data-confirm" : "data-reject");
       act(async () => {
-        await pulse.plugin(`/confirm/${encodeURIComponent(id)}`, {
-          method: "POST", body: { session },
-        });
-      }, "Подтверждаю…");
+        await pulse.plugin(`/confirm/${encodeURIComponent(id)}`, { method: "POST", body: { approve } });
+      }, approve ? "Разрешаю…" : "Отклоняю…");
     });
   });
 }

@@ -1,0 +1,4 @@
+# Для разработки и тестов вне Пульса: pip install -r backend/requirements-dev.txt
+pulse-plugin @ git+https://github.com/pulse-assist/pulse-plugin-sdk@v1.7.0
+pytest>=8
+-r requirements.txt

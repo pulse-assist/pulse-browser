@@ -138,6 +138,7 @@ class Store:
         return path
 
     def add_pending(self, session: str, action: str, detail: dict) -> str:
+        """Запрос подтверждения: что агент хочет сделать (действие, элемент, страница, скриншот)."""
         confirm_id = f"c{int(time.time() * 1000)}"
         with self._lock:
             pending = self._read_json(self.pending_file)
@@ -152,6 +153,13 @@ class Store:
             self._write_json(self.pending_file, pending)
         return confirm_id
 
+    def get_pending(self, confirm_id: str) -> dict:
+        with self._lock:
+            item = self._read_json(self.pending_file).get(confirm_id)
+        if not item:
+            raise KeyError(f"подтверждение «{confirm_id}» не найдено")
+        return dict(item)
+
     def list_pending(self, session: str | None = None) -> list[dict]:
         with self._lock:
             pending = self._read_json(self.pending_file)
@@ -160,16 +168,38 @@ class Store:
             items = [i for i in items if i.get("session") == session]
         return sorted(items, key=lambda i: i.get("created_at") or "")
 
-    def consume_pending(self, confirm_id: str, session: str) -> dict:
+    def decide_pending(self, confirm_id: str, approve: bool) -> dict:
+        """Решение владельца: approved (действие можно выполнить один раз) или rejected."""
         with self._lock:
             pending = self._read_json(self.pending_file)
             item = pending.get(confirm_id)
             if not item or item.get("status") != "pending":
-                raise KeyError(f"подтверждение «{confirm_id}» не найдено или уже использовано")
-            if item.get("session") != session:
-                raise ValueError("подтверждение относится к другой сессии")
-            item["status"] = "approved"
-            item["approved_at"] = utc_now()
+                raise KeyError(f"подтверждение «{confirm_id}» не найдено или уже решено")
+            item["status"] = "approved" if approve else "rejected"
+            item["decided_at"] = utc_now()
+            pending[confirm_id] = item
+            self._write_json(self.pending_file, pending)
+            return dict(item)
+
+    def use_approval(self, confirm_id: str, session: str, action: str, target: dict) -> dict:
+        """Одобренное подтверждение тратится на одно действие — то самое, о котором спрашивали."""
+        with self._lock:
+            pending = self._read_json(self.pending_file)
+            item = pending.get(confirm_id)
+            if not item:
+                raise KeyError(f"подтверждение «{confirm_id}» не найдено")
+            if item.get("status") == "pending":
+                raise PermissionError("владелец ещё не подтвердил — ждите решения на странице «Браузер»")
+            if item.get("status") == "rejected":
+                raise PermissionError("владелец отклонил это действие")
+            if item.get("status") != "approved":
+                raise PermissionError("подтверждение уже использовано — для нового действия нужно новое")
+            if item.get("session") != session or item.get("action") != action or any(
+                    (item.get("detail") or {}).get(k) != v for k, v in target.items()):
+                raise PermissionError("подтверждение выдано на другое действие — повторите ровно его "
+                                      "(тот же элемент) или запросите новое")
+            item["status"] = "used"
+            item["used_at"] = utc_now()
             pending[confirm_id] = item
             self._write_json(self.pending_file, pending)
             return dict(item)
