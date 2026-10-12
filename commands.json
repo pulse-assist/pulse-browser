@@ -1,0 +1,535 @@
+[
+  {
+    "name": "sessions",
+    "description": "Список профилей-сессий: режим, proxy, running, last URL, lock"
+  },
+  {
+    "name": "session create",
+    "description": "Создать именованный профиль (персистентный user-data-dir)",
+    "args": [
+      {
+        "name": "name",
+        "required": true,
+        "description": "имя сессии: amazon, work, anon…"
+      },
+      {
+        "name": "mode",
+        "description": "read-only (по умолчанию) или write"
+      },
+      {
+        "name": "proxy",
+        "description": "прокси сессии: http://user:pass@host:port или socks5://…; пусто — без прокси"
+      },
+      {
+        "name": "allowlist",
+        "description": "домены через запятую (пусто — без ограничения)"
+      }
+    ]
+  },
+  {
+    "name": "session update",
+    "description": "Изменить режим, proxy или allowlist сессии",
+    "args": [
+      {
+        "name": "name",
+        "required": true,
+        "description": "имя сессии"
+      },
+      {
+        "name": "mode",
+        "description": "read-only или write"
+      },
+      {
+        "name": "proxy",
+        "description": "новый прокси или пустая строка — сбросить"
+      },
+      {
+        "name": "allowlist",
+        "description": "домены через запятую"
+      }
+    ]
+  },
+  {
+    "name": "session delete",
+    "description": "Удалить сессию и её профиль на диске (закрывает Chrome)",
+    "args": [
+      {
+        "name": "name",
+        "required": true,
+        "description": "имя сессии"
+      }
+    ]
+  },
+  {
+    "name": "open",
+    "description": "Открыть URL в сессии (запускает Chrome при необходимости)",
+    "timeout_sec": 120,
+    "args": [
+      {
+        "name": "session",
+        "required": true,
+        "description": "имя сессии"
+      },
+      {
+        "name": "url",
+        "required": true,
+        "description": "https://…"
+      },
+      {
+        "name": "tab",
+        "description": "вкладка: номер или id из tabs (по умолчанию — активная); станет активной"
+      },
+      {
+        "name": "wait_selector",
+        "description": "после действия дождаться видимого CSS-селектора"
+      },
+      {
+        "name": "wait_url",
+        "description": "после действия дождаться URL (подстрока или re:regex)"
+      },
+      {
+        "name": "wait_text",
+        "description": "после действия дождаться текста на странице"
+      },
+      {
+        "name": "wait_idle",
+        "description": "true — дождаться networkidle (нет запросов 500 мс)"
+      },
+      {
+        "name": "wait_ms",
+        "description": "пауза в мс после действия"
+      },
+      {
+        "name": "wait_timeout",
+        "description": "таймаут ожиданий, сек (по умолчанию 15)"
+      },
+      {
+        "name": "new_tab",
+        "description": "true — открыть URL в новой вкладке"
+      }
+    ]
+  },
+  {
+    "name": "snapshot",
+    "description": "Accessibility/DOM snapshot + screenshot в @browser/<session>/",
+    "timeout_sec": 120,
+    "args": [
+      {
+        "name": "session",
+        "required": true,
+        "description": "имя сессии"
+      },
+      {
+        "name": "format",
+        "description": "a11y (по умолчанию) | html | both"
+      },
+      {
+        "name": "tab",
+        "description": "вкладка: номер или id из tabs (по умолчанию — активная); станет активной"
+      }
+    ]
+  },
+  {
+    "name": "click",
+    "description": "Клик по CSS-селектору или ref из snapshot (нужен mode=write)",
+    "timeout_sec": 60,
+    "args": [
+      {
+        "name": "session",
+        "required": true,
+        "description": "имя сессии"
+      },
+      {
+        "name": "selector",
+        "description": "CSS-селектор"
+      },
+      {
+        "name": "ref",
+        "description": "ref из snapshot (альтернатива selector)"
+      },
+      {
+        "name": "confirm",
+        "description": "id подтверждения владельца, если страница опасная"
+      },
+      {
+        "name": "tab",
+        "description": "вкладка: номер или id из tabs (по умолчанию — активная); станет активной"
+      },
+      {
+        "name": "wait_selector",
+        "description": "после действия дождаться видимого CSS-селектора"
+      },
+      {
+        "name": "wait_url",
+        "description": "после действия дождаться URL (подстрока или re:regex)"
+      },
+      {
+        "name": "wait_text",
+        "description": "после действия дождаться текста на странице"
+      },
+      {
+        "name": "wait_idle",
+        "description": "true — дождаться networkidle (нет запросов 500 мс)"
+      },
+      {
+        "name": "wait_ms",
+        "description": "пауза в мс после действия"
+      },
+      {
+        "name": "wait_timeout",
+        "description": "таймаут ожиданий, сек (по умолчанию 15)"
+      }
+    ]
+  },
+  {
+    "name": "type",
+    "description": "Ввод текста в элемент (нужен mode=write)",
+    "timeout_sec": 60,
+    "args": [
+      {
+        "name": "session",
+        "required": true,
+        "description": "имя сессии"
+      },
+      {
+        "name": "text",
+        "required": true,
+        "description": "текст"
+      },
+      {
+        "name": "selector",
+        "description": "CSS-селектор"
+      },
+      {
+        "name": "ref",
+        "description": "ref из snapshot"
+      },
+      {
+        "name": "submit",
+        "description": "true — нажать Enter после ввода"
+      },
+      {
+        "name": "confirm",
+        "description": "id подтверждения владельца"
+      },
+      {
+        "name": "tab",
+        "description": "вкладка: номер или id из tabs (по умолчанию — активная); станет активной"
+      },
+      {
+        "name": "wait_selector",
+        "description": "после действия дождаться видимого CSS-селектора"
+      },
+      {
+        "name": "wait_url",
+        "description": "после действия дождаться URL (подстрока или re:regex)"
+      },
+      {
+        "name": "wait_text",
+        "description": "после действия дождаться текста на странице"
+      },
+      {
+        "name": "wait_idle",
+        "description": "true — дождаться networkidle (нет запросов 500 мс)"
+      },
+      {
+        "name": "wait_ms",
+        "description": "пауза в мс после действия"
+      },
+      {
+        "name": "wait_timeout",
+        "description": "таймаут ожиданий, сек (по умолчанию 15)"
+      }
+    ]
+  },
+  {
+    "name": "press",
+    "description": "Нажать клавишу (Enter, Tab, Escape…); нужен mode=write",
+    "timeout_sec": 60,
+    "args": [
+      {
+        "name": "session",
+        "required": true,
+        "description": "имя сессии"
+      },
+      {
+        "name": "key",
+        "required": true,
+        "description": "имя клавиши CDP: Enter, Tab, Escape…"
+      },
+      {
+        "name": "confirm",
+        "description": "id подтверждения владельца"
+      },
+      {
+        "name": "tab",
+        "description": "вкладка: номер или id из tabs (по умолчанию — активная); станет активной"
+      },
+      {
+        "name": "wait_selector",
+        "description": "после действия дождаться видимого CSS-селектора"
+      },
+      {
+        "name": "wait_url",
+        "description": "после действия дождаться URL (подстрока или re:regex)"
+      },
+      {
+        "name": "wait_text",
+        "description": "после действия дождаться текста на странице"
+      },
+      {
+        "name": "wait_idle",
+        "description": "true — дождаться networkidle (нет запросов 500 мс)"
+      },
+      {
+        "name": "wait_ms",
+        "description": "пауза в мс после действия"
+      },
+      {
+        "name": "wait_timeout",
+        "description": "таймаут ожиданий, сек (по умолчанию 15)"
+      }
+    ]
+  },
+  {
+    "name": "select",
+    "description": "Выбрать option в <select> (нужен mode=write)",
+    "timeout_sec": 60,
+    "args": [
+      {
+        "name": "session",
+        "required": true,
+        "description": "имя сессии"
+      },
+      {
+        "name": "selector",
+        "description": "CSS-селектор select"
+      },
+      {
+        "name": "ref",
+        "description": "ref из snapshot"
+      },
+      {
+        "name": "value",
+        "required": true,
+        "description": "value опции"
+      },
+      {
+        "name": "confirm",
+        "description": "id подтверждения владельца"
+      },
+      {
+        "name": "tab",
+        "description": "вкладка: номер или id из tabs (по умолчанию — активная); станет активной"
+      },
+      {
+        "name": "wait_selector",
+        "description": "после действия дождаться видимого CSS-селектора"
+      },
+      {
+        "name": "wait_url",
+        "description": "после действия дождаться URL (подстрока или re:regex)"
+      },
+      {
+        "name": "wait_text",
+        "description": "после действия дождаться текста на странице"
+      },
+      {
+        "name": "wait_idle",
+        "description": "true — дождаться networkidle (нет запросов 500 мс)"
+      },
+      {
+        "name": "wait_ms",
+        "description": "пауза в мс после действия"
+      },
+      {
+        "name": "wait_timeout",
+        "description": "таймаут ожиданий, сек (по умолчанию 15)"
+      }
+    ]
+  },
+  {
+    "name": "tabs",
+    "description": "Вкладки сессии: номер, id, url, title, active",
+    "args": [
+      {
+        "name": "session",
+        "required": true,
+        "description": "имя сессии"
+      }
+    ]
+  },
+  {
+    "name": "tab new",
+    "description": "Новая вкладка (становится активной); можно сразу открыть URL",
+    "timeout_sec": 120,
+    "args": [
+      {
+        "name": "session",
+        "required": true,
+        "description": "имя сессии"
+      },
+      {
+        "name": "url",
+        "description": "https://… (необязательно)"
+      },
+      {
+        "name": "wait_selector",
+        "description": "после действия дождаться видимого CSS-селектора"
+      },
+      {
+        "name": "wait_url",
+        "description": "после действия дождаться URL (подстрока или re:regex)"
+      },
+      {
+        "name": "wait_text",
+        "description": "после действия дождаться текста на странице"
+      },
+      {
+        "name": "wait_idle",
+        "description": "true — дождаться networkidle (нет запросов 500 мс)"
+      },
+      {
+        "name": "wait_ms",
+        "description": "пауза в мс после действия"
+      },
+      {
+        "name": "wait_timeout",
+        "description": "таймаут ожиданий, сек (по умолчанию 15)"
+      }
+    ]
+  },
+  {
+    "name": "tab select",
+    "description": "Сделать вкладку активной: дальнейшие snapshot/click/type идут в неё",
+    "args": [
+      {
+        "name": "session",
+        "required": true,
+        "description": "имя сессии"
+      },
+      {
+        "name": "tab",
+        "required": true,
+        "description": "номер или id из tabs"
+      }
+    ]
+  },
+  {
+    "name": "tab close",
+    "description": "Закрыть вкладку (последнюю закрыть нельзя — используйте close)",
+    "args": [
+      {
+        "name": "session",
+        "required": true,
+        "description": "имя сессии"
+      },
+      {
+        "name": "tab",
+        "description": "номер или id; по умолчанию активная"
+      }
+    ]
+  },
+  {
+    "name": "wait",
+    "description": "Дождаться условий (все указанные): селектор, URL, текст, networkidle, пауза. По таймауту ok=false, без ошибки",
+    "timeout_sec": 120,
+    "args": [
+      {
+        "name": "session",
+        "required": true,
+        "description": "имя сессии"
+      },
+      {
+        "name": "selector",
+        "description": "CSS-селектор (ждём видимый элемент)"
+      },
+      {
+        "name": "hidden_ok",
+        "description": "true — достаточно, что элемент есть в DOM"
+      },
+      {
+        "name": "url",
+        "description": "подстрока URL или re:регулярка"
+      },
+      {
+        "name": "text",
+        "description": "текст на странице"
+      },
+      {
+        "name": "networkidle",
+        "description": "true — нет сетевых запросов 500 мс"
+      },
+      {
+        "name": "ms",
+        "description": "просто пауза, мс"
+      },
+      {
+        "name": "timeout",
+        "description": "таймаут, сек (по умолчанию 15)"
+      },
+      {
+        "name": "tab",
+        "description": "вкладка: номер или id из tabs (по умолчанию — активная); станет активной"
+      }
+    ]
+  },
+  {
+    "name": "close",
+    "description": "Закрыть Chrome сессии (профиль на диске остаётся)",
+    "args": [
+      {
+        "name": "session",
+        "required": true,
+        "description": "имя сессии"
+      }
+    ]
+  },
+  {
+    "name": "view",
+    "description": "Текущий кадр сессии (screenshot + URL) для UI / агента",
+    "timeout_sec": 60,
+    "args": [
+      {
+        "name": "session",
+        "required": true,
+        "description": "имя сессии"
+      },
+      {
+        "name": "tab",
+        "description": "вкладка: номер или id из tabs (по умолчанию — активная); станет активной"
+      }
+    ]
+  },
+  {
+    "name": "confirm",
+    "description": "Подтвердить опасное действие (checkout/Pay) — только после явного «да» владельца",
+    "args": [
+      {
+        "name": "session",
+        "required": true,
+        "description": "имя сессии"
+      },
+      {
+        "name": "id",
+        "required": true,
+        "description": "id из ответа click/type (pending confirm)"
+      }
+    ]
+  },
+  {
+    "name": "pending",
+    "description": "Ожидающие подтверждения владельца",
+    "args": [
+      {
+        "name": "session",
+        "description": "фильтр по сессии"
+      }
+    ]
+  },
+  {
+    "name": "check",
+    "description": "Проверить Chromium, CDP и каталоги профилей",
+    "timeout_sec": 60
+  }
+]

@@ -1,0 +1,66 @@
+{
+  "id": "browser",
+  "name": "Браузер",
+  "version": "0.2.0",
+  "pulse": ">=1.4",
+  "description": "Управляемый Chrome (CDP) для агентов: сессии владельца, snapshot/клики, просмотр в UI Пульса, прокси на профиль",
+  "permissions": [
+    "files:provide",
+    "signals:create",
+    "notify",
+    "network"
+  ],
+  "runtime": {
+    "kind": "docker",
+    "dockerfile": "Dockerfile",
+    "health": "/health"
+  },
+  "files": {
+    "provider": {
+      "title": "Браузер",
+      "icon": "bi-globe",
+      "description": "Артефакты сессий: скриншоты, HTML dump, журнал действий (@browser/<session>/…)"
+    }
+  },
+  "ui": {
+    "dist": "ui"
+  },
+  "menu": [
+    {
+      "id": "main",
+      "title": "Браузер",
+      "icon": "bi-globe",
+      "page": "index.html"
+    }
+  ],
+  "settings": {
+    "default_mode": {
+      "type": "string",
+      "title": "Режим агента по умолчанию",
+      "enum": [
+        "read-only",
+        "write"
+      ],
+      "default": "read-only",
+      "description": "read-only — агент только смотрит; write — клики и ввод (всё равно confirm на оплату)"
+    },
+    "headless": {
+      "type": "boolean",
+      "title": "Headless Chrome",
+      "default": true,
+      "description": "Выключите, если нужен видимый Chrome на хосте с дисплеем (обычно оставляйте включённым)"
+    },
+    "confirm_patterns": {
+      "type": "string",
+      "title": "URL, где нужен confirm владельца",
+      "default": "checkout, /pay, /payment, /placeorder, /gp/buy, /order/confirm",
+      "description": "Подстроки URL через запятую: клик/отправка формы на таких страницах — только после pulse browser confirm"
+    }
+  },
+  "skills": [
+    "skills/browser.md"
+  ],
+  "commands": "commands.json",
+  "check": "check",
+  "install": "INSTALL.md"
+}

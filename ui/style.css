@@ -1,0 +1,58 @@
+/* Layout only — colors from Pulse --pulse-* / pl-* */
+.cols { display: grid; grid-template-columns: minmax(240px, 320px) 1fr; gap: 1rem; }
+@media (max-width: 800px) { .cols { grid-template-columns: 1fr; } }
+
+.box { border: 1px solid var(--pulse-divider); border-radius: 8px; padding: 0.75rem 1rem; }
+.box-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+.box-head h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+.hint { color: var(--pulse-muted, #888); font-size: 12px; }
+.grow { flex: 1; }
+
+.session {
+  display: flex; flex-direction: column; gap: 0.25rem;
+  padding: 0.5rem 0; border-bottom: 1px solid var(--pulse-divider);
+  cursor: pointer;
+}
+.session:last-child { border-bottom: none; }
+.session.active { background: color-mix(in srgb, var(--pulse-primary) 8%, transparent); margin: 0 -0.5rem; padding: 0.5rem; border-radius: 6px; }
+.session-name { font-weight: 600; }
+.session-meta { font-size: 12px; color: var(--pulse-muted, #888); word-break: break-all; }
+
+.toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.75rem; }
+.toolbar input[type="url"], .toolbar input[type="text"], .form input, .form select {
+  flex: 1; min-width: 120px; padding: 0.4rem 0.6rem;
+  border: 1px solid var(--pulse-divider); border-radius: 6px; background: transparent;
+  color: inherit; font: inherit;
+}
+.btn, button.btn {
+  padding: 0.35rem 0.7rem; border-radius: 6px; border: 1px solid var(--pulse-divider);
+  background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 13px;
+}
+.btn-primary { background: var(--pulse-primary); color: #fff; border-color: transparent; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.view-wrap { position: relative; background: #111; border-radius: 8px; overflow: hidden; min-height: 240px; }
+.view-wrap img { display: block; width: 100%; height: auto; cursor: crosshair; user-select: none; }
+.view-empty { min-height: 280px; display: flex; align-items: center; justify-content: center; }
+
+.form { display: grid; gap: 0.5rem; margin-top: 0.75rem; }
+.form label { font-size: 12px; color: var(--pulse-muted, #888); display: grid; gap: 0.25rem; }
+.pending { margin-top: 0.75rem; }
+.pending-item { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; padding: 0.5rem 0; border-top: 1px solid var(--pulse-divider); }
+
+.working { display: flex; align-items: center; gap: 0.5rem; font-size: 13px; margin-bottom: 0.5rem; }
+.spinner {
+  width: 14px; height: 14px; border: 2px solid var(--pulse-divider);
+  border-top-color: var(--pulse-primary); border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* вкладки Chrome */
+.tabbar { display: flex; gap: 0.25rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.5rem; }
+.tab { display: inline-flex; align-items: center; gap: 0.25rem; max-width: 14rem; padding: 0.25rem 0.5rem;
+  border: 1px solid var(--pulse-divider); border-radius: 6px; cursor: pointer; font-size: 0.8125rem; }
+.tab.active { border-color: var(--pulse-primary); font-weight: 600; }
+.tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-x { border: 0; background: transparent; cursor: pointer; font-size: 1rem; line-height: 1; color: inherit; }
+.view-wrap:focus { outline: 2px solid var(--pulse-primary); outline-offset: 1px; }

@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.pulse_plugin_sdk/
+*.egg-info/
+.plugin-data/
