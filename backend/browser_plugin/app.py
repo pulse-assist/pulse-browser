@@ -30,7 +30,14 @@ def _signal(title: str, body: str) -> None:
         pass
 
 
-browser = BrowserService(store, plugin.settings, signal_fn=_signal)
+def _full_control() -> bool:
+    """Галочка агента agent_settings.full_control (контракт 1.8, заголовок X-Pulse-Agent-Settings)."""
+    return bool(plugin.agent_setting("full_control"))
+
+
+browser = BrowserService(
+    store, plugin.settings, signal_fn=_signal, full_control_fn=_full_control,
+)
 plugin.provide_files(ArtifactsFS(store.artifacts, store.runs))
 
 
@@ -59,10 +66,23 @@ def _cmd(fn, *args, **kwargs):
 
 
 def _owner_for_write(mode) -> None:
-    """Режим write (агент кликает и печатает) включает владелец сам — не агент себе."""
-    if str(mode or "").strip().lower() == "write" and plugin.caller() != "owner":
-        raise CommandError("режим write включает владелец: страница [Браузер](/p/browser/main) → режим сессии "
-                           "«агент может действовать». Попроси его об этом")
+    """Режим write включает владелец или агент с галочкой «полный контроль браузера» (agent_settings)."""
+    if str(mode or "").strip().lower() != "write":
+        return
+    if plugin.caller() == "owner" or _full_control():
+        return
+    raise CommandError("режим write включает владелец: страница [Браузер](/p/browser/main) → режим сессии "
+                       "«агент может действовать». Либо включите агенту «полный контроль браузера» "
+                       "в Настройки → Агенты → доступ")
+
+
+def _session_mode(explicit) -> str | None:
+    """Без --mode: у агента с полным контролем — сразу write."""
+    if explicit not in (None, ""):
+        return str(explicit)
+    if _full_control():
+        return "write"
+    return None
 
 
 def _int(value) -> int | None:
@@ -119,12 +139,13 @@ def state() -> dict:
 
 @app.post("/sessions")
 def create_session(body: dict = Body(...)) -> dict:
-    if str(body.get("mode") or "").lower() == "write":
+    mode = _session_mode(body.get("mode"))
+    if str(mode or "").lower() == "write" and not _full_control():
         plugin.require_owner("Режим write")
     return _run(
         browser.create_session,
         body.get("name") or "",
-        mode=body.get("mode"),
+        mode=mode,
         proxy=body.get("proxy"),
         allowlist=body.get("allowlist"),
     )
@@ -133,7 +154,7 @@ def create_session(body: dict = Body(...)) -> dict:
 @app.patch("/sessions/{name}")
 def patch_session(name: str, body: dict = Body(...)) -> dict:
     fields = {k: body[k] for k in ("mode", "proxy", "allowlist") if k in body}
-    if str(fields.get("mode") or "").lower() == "write":
+    if str(fields.get("mode") or "").lower() == "write" and not _full_control():
         plugin.require_owner("Режим write")
     return _run(browser.update_session, name, **fields)
 
@@ -217,11 +238,12 @@ def cmd_sessions(args: dict) -> dict:
 def cmd_session_create(args: dict) -> dict:
     if not args.get("name"):
         raise CommandError("нужен --name")
-    _owner_for_write(args.get("mode"))
+    mode = _session_mode(args.get("mode"))
+    _owner_for_write(mode)
     return _cmd(
         browser.create_session,
         args["name"],
-        mode=args.get("mode"),
+        mode=mode,
         proxy=args.get("proxy"),
         allowlist=args.get("allowlist"),
     )
