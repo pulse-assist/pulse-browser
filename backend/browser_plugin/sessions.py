@@ -23,7 +23,7 @@ import httpx
 
 from .cdp import CDPError
 from .chrome import ChromeSession, find_chrome
-from .policy import NeedConfirm, PolicyError, check_mutation, parse_patterns, require_url_allowed
+from .policy import NeedConfirm, PolicyError, needs_owner_confirm, parse_patterns, require_url_allowed
 from .store import Store
 
 SNAPSHOT_ELEMENTS = 150
@@ -109,10 +109,13 @@ PROBE_JS = r"""
 
 
 class BrowserService:
-    def __init__(self, store: Store, settings: dict, signal_fn: Callable | None = None, *, reaper: bool = True):
+    def __init__(self, store: Store, settings: dict, signal_fn: Callable | None = None, *,
+                 full_control_fn: Callable[[], bool] | None = None, reaper: bool = True):
         self.store = store
         self.settings = settings
         self.signal_fn = signal_fn
+        # контракт 1.8: агент с галочкой «полный контроль браузера» — без confirm на checkout
+        self._full_control_fn = full_control_fn or (lambda: False)
         self._chrome: dict[str, ChromeSession] = {}
         self._locks: dict[str, threading.RLock] = {}
         self._writers: dict[str, str] = {}
@@ -445,7 +448,10 @@ class BrowserService:
             if not probe:
                 raise CDPError(f"элемент не найден: {kwargs.get('ref') or sel} — страница изменилась, сделай snapshot")
         target = {"url": url, "label": probe.get("label") or kwargs.get("key")}
-        if check_mutation(meta, url, patterns=self._patterns()):
+        need_confirm = needs_owner_confirm(
+            meta, url, patterns=self._patterns(), full_control=bool(self._full_control_fn()),
+        )
+        if need_confirm:
             if not confirm:
                 raise self._ask_confirm(name, chrome, action, target, kwargs)
             try:

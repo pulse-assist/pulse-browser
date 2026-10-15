@@ -67,6 +67,11 @@ def check_mutation(session: dict, url: str, *, patterns: list[str]) -> bool:
     return is_dangerous(url, patterns)
 
 
+def needs_owner_confirm(session: dict, url: str, *, patterns: list[str], full_control: bool) -> bool:
+    """True — перед действием нужно подтверждение владельца. full_control (галочка агента) снимает confirm."""
+    return check_mutation(session, url, patterns=patterns) and not full_control
+
+
 class NeedConfirm(Exception):
     def __init__(self, message: str, pending_payload: dict):
         super().__init__(message)
