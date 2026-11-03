@@ -32,6 +32,8 @@ pulse browser download --session base --ref e42          # файл по ссы�
 - Ожидание вместо пауз: `--wait_idle true` (сеть стихла), `--wait_text "…"`, `--wait_selector …`. `wait.ok=false` —
   условие не наступило: проверь snapshot, не считай шаг сделанным.
 - Новая вкладка (target=_blank) — `pulse browser tabs`, затем `tab select --tab N`.
+- Сессией пользуются несколько агентов — работай в своей вкладке: `tab new --session … --url …` → в ответе `tab` →
+  `--tab ID` у каждой команды (open, snapshot, click, type, press). Чужие вкладки не трогай; «сессия занята» — подожди.
 - Скриншот каждого шага — `@browser/<session>/…`; владельцу в ответ — путь или `pulse chat attach`.
 
 ## Режимы и подтверждения

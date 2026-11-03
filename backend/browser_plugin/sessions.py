@@ -15,6 +15,7 @@ import shutil
 import tempfile
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import unquote, urlparse
@@ -33,6 +34,10 @@ DOWNLOAD_MAX = 100 * 1024 * 1024
 CHALLENGES = ("ddos-guard", "just a moment", "checking your browser", "attention required", "captcha",
               "подтвердите, что вы не робот", "вы не робот", "доступ ограничен", "access denied",
               "are you a robot", "проверка браузера", "antibot")
+
+
+# сколько команда с --tab ждёт, пока другая команда той же сессии закончит со своей вкладкой
+TAB_LOCK_WAIT = 60
 
 
 class SessionBusy(Exception):
@@ -200,11 +205,26 @@ class BrowserService:
             self._chrome[name] = chrome
             return chrome
 
-    def _chrome_for(self, name: str, tab: str | int | None = None) -> ChromeSession:
-        chrome = self.ensure_chrome(name)
-        if tab not in (None, ""):
+    @contextmanager
+    def _on_tab(self, name: str, tab: str | int | None = None):
+        """Chrome сессии с выбранной вкладкой на всё время команды.
+
+        У сессии одно CDP-подключение к «текущей» вкладке. С --tab вкладка выбирается и команда идёт под
+        блокировкой сессии: параллельная команда другого агента со своим --tab ждёт и не переключает вкладку
+        посреди чужой команды. Без --tab — как раньше: текущая вкладка, без блокировки."""
+        if tab in (None, ""):
+            yield self.ensure_chrome(name)
+            return
+        lock = self._lock(name)
+        if not lock.acquire(timeout=TAB_LOCK_WAIT):
+            raise SessionBusy(f"сессия «{name}» занята: другая команда работает со своей вкладкой дольше "
+                              f"{TAB_LOCK_WAIT} с — повтори позже")
+        try:
+            chrome = self.ensure_chrome(name)
             chrome.select_tab(tab)
-        return chrome
+            yield chrome
+        finally:
+            lock.release()
 
     def close(self, name: str) -> dict:
         with self._lock(name):
@@ -235,12 +255,12 @@ class BrowserService:
         meta = self.store.get(name)
         url = _normalize_url(url)
         require_url_allowed(url, meta)
-        chrome = self._chrome_for(name, tab)
-        if new_tab:
-            chrome.new_tab()
-        info = chrome.navigate(url)
-        waited = chrome.wait(**wait) if wait else None
-        return self._page_result(name, chrome, "open", info, waited)
+        with self._on_tab(name, tab) as chrome:
+            if new_tab:
+                chrome.new_tab()
+            info = chrome.navigate(url)
+            waited = chrome.wait(**wait) if wait else None
+            return self._page_result(name, chrome, "open", info, waited)
 
     def _page_result(self, name: str, chrome: ChromeSession, action: str, info: dict | None = None,
                      waited: dict | None = None, extra: dict | None = None) -> dict:
@@ -277,7 +297,11 @@ class BrowserService:
 
     def snapshot(self, name: str, fmt: str = "page", *, tab: str | int | None = None,
                  max_elements: int | None = None, max_text: int | None = None) -> dict:
-        chrome = self._chrome_for(name, tab)
+        with self._on_tab(name, tab) as chrome:
+            return self._snapshot_on(name, chrome, fmt, max_elements, max_text)
+
+    def _snapshot_on(self, name: str, chrome: ChromeSession, fmt: str, max_elements: int | None,
+                     max_text: int | None) -> dict:
         fmt = (fmt or "page").lower()
         result = self._page_result(name, chrome, "snapshot")
         folder = self.store.artifact_dir(name)
@@ -312,9 +336,12 @@ class BrowserService:
         except NotRunning:
             return {"session": name, "running": False}
         if tab not in (None, ""):
-            chrome.select_tab(tab)
-        cur = chrome.current()
-        png = chrome.screenshot_png()
+            with self._on_tab(name, tab):
+                cur = chrome.current()
+                png = chrome.screenshot_png()
+        else:
+            cur = chrome.current()
+            png = chrome.screenshot_png()
         return {"session": name, "running": True, "url": cur.get("url"), "title": cur.get("title"),
                 "image_base64": base64.b64encode(png).decode("ascii"), "mime": "image/png",
                 "width": 1280, "height": 800}
@@ -329,29 +356,33 @@ class BrowserService:
             require_url_allowed(url, self.store.get(name))
         chrome = self.ensure_chrome(name)
         with self._lock(name):
-            chrome.new_tab(url)
+            tid = chrome.new_tab(url)
             waited = chrome.wait(**wait) if wait else None
-        self.store.audit(name, "tab_new", url=url, tab=chrome.tab_id)
-        return {**self.tabs(name), **({"wait": waited} if waited else {})}
+            # id новой вкладки — из-под блокировки: после неё «active» может стать вкладкой другого агента
+            out = {**self.tabs(name), "tab": tid, **({"wait": waited} if waited else {})}
+        self.store.audit(name, "tab_new", url=url, tab=tid)
+        return out
 
     def tab_select(self, name: str, tab: str | int) -> dict:
         chrome = self.ensure_chrome(name)
         with self._lock(name):
             chrome.select_tab(tab)
-        return self.tabs(name)
+            return self.tabs(name)
 
     def tab_close(self, name: str, tab: str | int | None = None) -> dict:
         chrome = self.ensure_chrome(name)
         with self._lock(name):
             closed = chrome.close_tab(tab)
+            out = {**self.tabs(name), "closed": closed}
         self.store.audit(name, "tab_close", tab=closed)
-        return {**self.tabs(name), "closed": closed}
+        return out
 
     def wait_for(self, name: str, *, tab: str | int | None = None, **cond: Any) -> dict:
-        chrome = self._chrome_for(name, tab)
-        result = chrome.wait(**cond)
-        cur = chrome.current()
-        return {"session": name, "tab": chrome.tab_id, "url": cur.get("url"), "title": cur.get("title"), **result}
+        with self._on_tab(name, tab) as chrome:
+            result = chrome.wait(**cond)
+            cur = chrome.current()
+            tab_id = chrome.tab_id
+        return {"session": name, "tab": tab_id, "url": cur.get("url"), "title": cur.get("title"), **result}
 
     def frame(self, name: str, since: int = 0, timeout: float = 2.0) -> dict:
         """Живой просмотр: следующий кадр screencast новее since (long-poll). Chrome не запускает."""
@@ -435,8 +466,12 @@ class BrowserService:
 
     def _mutate(self, name: str, action: str, confirm: str | None, *, tab: str | int | None = None,
                 wait: dict | None = None, **kwargs: Any) -> dict:
+        with self._on_tab(name, tab) as chrome:
+            return self._mutate_on(name, chrome, action, confirm, wait=wait, **kwargs)
+
+    def _mutate_on(self, name: str, chrome: ChromeSession, action: str, confirm: str | None, *,
+                   wait: dict | None = None, **kwargs: Any) -> dict:
         meta = self.store.get(name)
-        chrome = self._chrome_for(name, tab)
         url = chrome.current().get("url") or meta.get("last_url") or ""
         sel = None
         probe: dict = {}
